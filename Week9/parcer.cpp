@@ -3,6 +3,7 @@
 #include <string>
 #include <cctype>
 #include <map>
+#include <unordered_map>
 #include <fstream>
 
 using namespace std;
@@ -74,7 +75,7 @@ public:
                 pos++;
                 continue;
             }
-            // comments handling
+
             if (current == '/' && pos + 1 < src.size() && src[pos + 1] == '/') {
                 while (pos < src.size() && src[pos] != '\n') pos++;
                 continue;
@@ -176,6 +177,7 @@ class Parser {
 private:
     vector<Token> tokens;
     size_t pos;
+    unordered_map<string, TokenType> symbolTable;
 
 public:
     Parser(const vector<Token> &tokens) : tokens(tokens), pos(0) {}
@@ -219,22 +221,37 @@ public:
     }
 
     void parseDeclaration() {
+        TokenType varType = tokens[pos].type;
         pos++;
-        expect(T_ID);
+        
+        if (tokens[pos].type != T_ID) {
+            reportError("Expected variable name after type");
+        }
+        
+        string varName = tokens[pos].value;
+        
+        if (symbolTable.find(varName) != symbolTable.end()) {
+            reportError("Variable '" + varName + "' redeclared");
+        }
+        
+        symbolTable[varName] = varType;
+        pos++;
+        expect(T_ASSIGN);
+        parseExpression();
         expect(T_SEMICOLON);
+        
+        cout << "Variable declared: " << varName << " of type " << varType << endl;
     }
 
     void parseAssignment() {
-        expect(T_ID);
+        string varName = tokens[pos].value;
+        if (symbolTable.find(varName) == symbolTable.end()) {
+            reportError("Variable '" + varName + "' not declared");
+        }
+        pos++;
         expect(T_ASSIGN);
         parseExpression();
         expect(T_SEMICOLON);
-    }
-
-    void parseAssignment_FOR() {
-        expect(T_ID);
-        expect(T_ASSIGN);
-        parseExpression();
     }
 
     void parseIfStatement() {
@@ -260,11 +277,11 @@ public:
     void parseForStatement() {
         expect(T_FOR);
         expect(T_LPAREN);
-        parseAssignment_FOR();
+        parseAssignment();
         expect(T_SEMICOLON);
         parseExpression();
         expect(T_SEMICOLON);
-        parseAssignment_FOR();
+        parseAssignment();
         expect(T_RPAREN);
         parseStatement();
     }
@@ -277,8 +294,7 @@ public:
 
     void parseExpression() {
         parsePrimary();
-        while (tokens[pos].type == T_PLUS || tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL ||
-               tokens[pos].type == T_DIV) {
+        while (tokens[pos].type == T_PLUS || tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL || tokens[pos].type == T_DIV) {
             pos++;
             parsePrimary();
         }
@@ -314,8 +330,8 @@ int main() {
     string source_code = R"(
         int a = 5;  // This is a single-line comment
         int b = 10; // Another comment here
-        // Entire line comment
-        if (a == 5 && b != 10) {  // Check conditions
+        int c = 15; // Redeclaration of variable 'a'
+        if (a == 5 && b != 10) {  
             return a;
         }
     )";
