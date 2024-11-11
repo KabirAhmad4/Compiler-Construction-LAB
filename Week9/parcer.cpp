@@ -9,8 +9,8 @@ using namespace std;
 
 enum TokenType {
     T_INT, T_FLOAT, T_DOUBLE, T_STRING, T_BOOL, T_CHAR, T_ID, T_NUM, T_IF, T_ELSE, T_RETURN, T_WHILE, T_FOR, T_ASSIGN,
-    T_PLUS, T_MINUS, T_MUL, T_DIV, T_LPAREN, T_RPAREN, T_LBRACE, T_RBRACE, T_SEMICOLON, T_GT, T_LT, T_EQ, T_NEQ,
-    T_AND, T_OR, T_TRUE, T_FALSE, T_Cout, T_EOF
+    T_PLUS, T_MINUS, T_MUL, T_DIV, T_LPAREN, T_RPAREN, T_LBRACE, T_RBRACE, T_SEMICOLON, T_GT, T_LT, T_TRUE, T_FALSE,
+    T_EQ, T_NEQ, T_AND, T_OR, T_EOF, T_Cout
 };
 
 struct Token {
@@ -41,7 +41,7 @@ public:
     }
 
     string consumeString() {
-        pos++; // Skip the initial quote
+        pos++;
         size_t start = pos;
         while (pos < src.size() && src[pos] != '"') pos++;
         if (pos >= src.size()) {
@@ -49,18 +49,18 @@ public:
             exit(1);
         }
         string str = src.substr(start, pos - start);
-        pos++;  // Skip the closing quote
+        pos++;
         return str;
     }
 
     char consumeChar() {
-        pos++; // Skip initial quote
+        pos++;
         if (pos + 1 >= src.size() || src[pos + 1] != '\'') {
             cout << "Invalid character literal at line " << line << endl;
             exit(1);
         }
         char ch = src[pos];
-        pos += 2;  // Move past char and closing quote
+        pos += 2;
         return ch;
     }
 
@@ -68,15 +68,23 @@ public:
         vector<Token> tokens;
         while (pos < src.size()) {
             char current = src[pos];
+
             if (isspace(current)) {
                 if (current == '\n') line++;
                 pos++;
                 continue;
             }
+            // comments handling
+            if (current == '/' && pos + 1 < src.size() && src[pos + 1] == '/') {
+                while (pos < src.size() && src[pos] != '\n') pos++;
+                continue;
+            }
+
             if (isdigit(current)) {
                 tokens.push_back(Token{T_NUM, consumeNumber(), line});
                 continue;
             }
+
             if (isalpha(current)) {
                 string word = consumeWord();
                 if (word == "int") tokens.push_back(Token{T_INT, word, line});
@@ -96,6 +104,7 @@ public:
                 else tokens.push_back(Token{T_ID, word, line});
                 continue;
             }
+
             if (current == '"') {
                 tokens.push_back(Token{T_STRING, consumeString(), line});
                 continue;
@@ -104,6 +113,7 @@ public:
                 tokens.push_back(Token{T_CHAR, string(1, consumeChar()), line});
                 continue;
             }
+
             switch (current) {
                 case '=':
                     if (pos + 1 < src.size() && src[pos + 1] == '=') {
@@ -209,7 +219,7 @@ public:
     }
 
     void parseDeclaration() {
-        pos++;  // Skip the type
+        pos++;
         expect(T_ID);
         expect(T_SEMICOLON);
     }
@@ -221,6 +231,12 @@ public:
         expect(T_SEMICOLON);
     }
 
+    void parseAssignment_FOR() {
+        expect(T_ID);
+        expect(T_ASSIGN);
+        parseExpression();
+    }
+
     void parseIfStatement() {
         expect(T_IF);
         expect(T_LPAREN);
@@ -228,7 +244,7 @@ public:
         expect(T_RPAREN);
         parseStatement();
         if (tokens[pos].type == T_ELSE) {
-            expect(T_ELSE);
+            pos++;
             parseStatement();
         }
     }
@@ -244,10 +260,11 @@ public:
     void parseForStatement() {
         expect(T_FOR);
         expect(T_LPAREN);
-        parseAssignment();
+        parseAssignment_FOR();
+        expect(T_SEMICOLON);
         parseExpression();
         expect(T_SEMICOLON);
-        parseAssignment();
+        parseAssignment_FOR();
         expect(T_RPAREN);
         parseStatement();
     }
@@ -259,85 +276,47 @@ public:
     }
 
     void parseExpression() {
-        parseLogicalExpression();
-    }
-
-    void parseLogicalExpression() {
-        parseEqualityExpression();
-        while (tokens[pos].type == T_AND || tokens[pos].type == T_OR) {
+        parsePrimary();
+        while (tokens[pos].type == T_PLUS || tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL ||
+               tokens[pos].type == T_DIV) {
             pos++;
-            parseEqualityExpression();
+            parsePrimary();
         }
     }
 
-    void parseEqualityExpression() {
-        parseRelationalExpression();
-        while (tokens[pos].type == T_EQ || tokens[pos].type == T_NEQ) {
-            pos++;
-            parseRelationalExpression();
-        }
-    }
-
-    void parseRelationalExpression() {
-        parseAdditiveExpression();
-        while (tokens[pos].type == T_GT || tokens[pos].type == T_LT) {
-            pos++;
-            parseAdditiveExpression();
-        }
-    }
-
-    void parseAdditiveExpression() {
-        parseTerm();
-        while (tokens[pos].type == T_PLUS || tokens[pos].type == T_MINUS) {
-            pos++;
-            parseTerm();
-        }
-    }
-
-    void parseTerm() {
-        parseFactor();
-        while (tokens[pos].type == T_MUL || tokens[pos].type == T_DIV) {
-            pos++;
-            parseFactor();
-        }
-    }
-
-    void parseFactor() {
-        if (tokens[pos].type == T_NUM || tokens[pos].type == T_ID || tokens[pos].type == T_STRING || tokens[pos].type == T_CHAR) {
+    void parsePrimary() {
+        if (tokens[pos].type == T_NUM || tokens[pos].type == T_ID) {
             pos++;
         } else if (tokens[pos].type == T_LPAREN) {
-            expect(T_LPAREN);
+            pos++;
             parseExpression();
             expect(T_RPAREN);
-        } else if (tokens[pos].type == T_TRUE || tokens[pos].type == T_FALSE) {
-            pos++;  // Boolean literals
         } else {
-            reportError("Unexpected token in expression");
+            reportError("Expected primary expression");
         }
     }
 
-    void expect(TokenType type) {
-        if (tokens[pos].type != type) {
-            reportError("Expected token type " + to_string(type));
+    void expect(TokenType expectedType) {
+        if (tokens[pos].type == expectedType) {
+            pos++;
+        } else {
+            reportError("Unexpected token");
         }
-        pos++;
     }
 
     void reportError(const string &message) {
-        cout << "Syntax error: " << message << " at line " << tokens[pos].line << endl;
+        cout << "Syntax error: " << message << " at token '" << tokens[pos].value << "' on line " << tokens[pos].line << endl;
         exit(1);
     }
 };
 
 int main() {
     string source_code = R"(
-        int a = 5;
-        int b = 10;
-        if (a == 5 && b != 10) {
+        int a = 5;  // This is a single-line comment
+        int b = 10; // Another comment here
+        // Entire line comment
+        if (a == 5 && b != 10) {  // Check conditions
             return a;
-        }
-        while (a < b || b == 20) {
-            a = a + 1;
         }
     )";
 
@@ -345,7 +324,7 @@ int main() {
     vector<Token> tokens = lexer.tokenizer();
 
     for (const auto &token : tokens) {
-        cout << "Token: " << token.value << " Type: " << token.type << endl;
+        cout << "Token: " << token.value << " Type: " << token.type << " Line: " << token.line << endl;
     }
 
     Parser parser(tokens);
