@@ -5,11 +5,11 @@
 #include <sstream>
 #include <map>
 #include <algorithm>
+#include <iomanip> // for formatting
 
 using namespace std;
 
-enum TokenType
-{
+enum TokenType {
     T_INT,
     T_FLOAT,
     T_ID,
@@ -32,10 +32,8 @@ enum TokenType
     T_EOF,
 };
 
-string TokenTypeString(TokenType type)
-{
-    switch (type)
-    {
+string TokenTypeString(TokenType type) {
+    switch (type) {
     case T_NUM: return "NUM";
     case T_FLOAT: return "FLOAT";
     case T_INT: return "INT";
@@ -60,59 +58,49 @@ string TokenTypeString(TokenType type)
     }
 }
 
-struct Token
-{
+struct Token {
     TokenType type;
     string value;
     int line;
 };
 
-class Lexer
-{
+class Lexer {
 private:
     string src;
     size_t pos;
     int line;
 
 public:
-    Lexer(const string &src) : src(src), pos(0), line(0) {}
+    Lexer(const string& src) : src(src), pos(0), line(1) {}
 
-    vector<Token> tokenize()
-    {
+    vector<Token> tokenize() {
         vector<Token> tokens;
-        while (pos < src.size())
-        {
+        while (pos < src.size()) {
             char current = src[pos];
 
-            if (current == '/' && pos + 1 < src.size() && src[pos + 1] == '/')
-            {
+            if (current == '/' && pos + 1 < src.size() && src[pos + 1] == '/') {
                 pos += 2;
-                while (pos < src.size() && src[pos] != '\n')
-                    pos++;
+                while (pos < src.size() && src[pos] != '\n') pos++;
                 continue;
             }
 
-            if (current == '\n')
-            {
+            if (current == '\n') {
                 line++;
                 pos++;
                 continue;
             }
 
-            if (isspace(current))
-            {
+            if (isspace(current)) {
                 pos++;
                 continue;
             }
 
-            if (isdigit(current))
-            {
+            if (isdigit(current)) {
                 tokens.push_back(Token{T_NUM, consumeNumber(), line});
                 continue;
             }
 
-            if (isalpha(current))
-            {
+            if (isalpha(current)) {
                 string word = consumeWord();
                 if (word == "int")
                     tokens.push_back(Token{T_INT, word, line});
@@ -129,8 +117,7 @@ public:
                 continue;
             }
 
-            switch (current)
-            {
+            switch (current) {
             case '=': tokens.push_back(Token{T_ASSIGN, "=", line}); break;
             case '+': tokens.push_back(Token{T_PLUS, "+", line}); break;
             case '-': tokens.push_back(Token{T_MINUS, "-", line}); break;
@@ -153,83 +140,68 @@ public:
         return tokens;
     }
 
-    string consumeNumber()
-    {
+    string consumeNumber() {
         size_t start = pos;
-        while (pos < src.size() && (isdigit(src[pos]) || src[pos] == '.'))
-            pos++;
+        while (pos < src.size() && (isdigit(src[pos]) || src[pos] == '.')) pos++;
         return src.substr(start, pos - start);
     }
 
-    string consumeWord()
-    {
+    string consumeWord() {
         size_t start = pos;
-        while (pos < src.size() && isalnum(src[pos]))
-            pos++;
+        while (pos < src.size() && isalnum(src[pos])) pos++;
         return src.substr(start, pos - start);
     }
 };
 
-struct SymbolEntry
-{
+struct SymbolEntry {
     string name;
     TokenType datatype;
     string value;
-    bool isFunction = false;
 };
 
-class SymbolTable
-{
+class SymbolTable {
 private:
-    vector<Token> tokens;
     map<string, SymbolEntry> table;
 
 public:
-    SymbolTable(const vector<Token> &tokens) : tokens(tokens) {}
-
-    void addEntry(const string &name, TokenType datatype, const string &value = "")
-    {
+    void addEntry(const string& name, TokenType datatype, const string& value = "") {
         table[name] = SymbolEntry{name, datatype, value};
     }
 
-    bool exists(const string &name) const
-    {
+    void setValue(const string& name, const string& value) {
+        if (exists(name))
+            table[name].value = value;
+        else {
+            cout << "Variable " << name << " not declared!" << endl;
+            exit(1);
+        }
+    }
+
+    string getValue(const string& name) const {
+        if (exists(name))
+            return table.at(name).value;
+        else {
+            cout << "Variable " << name << " not declared!" << endl;
+            exit(1);
+        }
+    }
+
+    bool exists(const string& name) const {
         return table.find(name) != table.end();
     }
 
-    void makeTable()
-    {
-        for (size_t i = 0; i < tokens.size(); i++)
-        {
-            const auto &token = tokens[i];
-            if (token.type == T_INT || token.type == T_FLOAT)
-            {
-                if (i + 1 < tokens.size() && tokens[i + 1].type == T_ID)
-                {
-                    const auto &varName = tokens[i + 1].value;
-                    if (!exists(varName))
-                        addEntry(varName, token.type);
-                    else
-                    {
-                        cout << "Redefinition of variable: " << varName << endl;
-                        exit(1);
-                    }
-                }
-            }
-            else if (token.type == T_ID)
-            {
-                if (!exists(token.value))
-                {
-                    cout << "Undeclared variable: " << token.value << endl;
-                    exit(1);
-                }
-            }
+    void printTable() const {
+        cout << "\nSymbol Table:" << endl;
+        cout << setw(10) << "Name" << setw(10) << "Type" << setw(15) << "Value" << endl;
+        for (const auto& entry : table) {
+            cout << setw(10) << entry.second.name
+                 << setw(10) << TokenTypeString(entry.second.datatype)
+                 << setw(15) << entry.second.value << endl;
         }
     }
 };
 
-class IntermediateCodeGenerator
-{
+class IntermediateCodeGenerator {
 private:
     vector<string> instructions;
     int tempCounter = 0;
@@ -239,258 +211,171 @@ public:
     string newTemp() { return "T" + to_string(tempCounter++); }
     string newLabel() { return "L" + to_string(labelCounter++); }
 
-    void addInstruction(const string &instr)
-    {
+    void addInstruction(const string& instr) {
         instructions.push_back(instr);
     }
 
-    void printInstructions() const
-    {
-        for (const auto &instr : instructions)
+    void printInstructions() const {
+        cout << "\nThree-Address Code:" << endl;
+        for (const auto& instr : instructions)
             cout << instr << endl;
+    }
+
+    void generateAssembly() const {
+        cout << "\nAssembly Code:" << endl;
+        for (const auto& instr : instructions) {
+            stringstream ss(instr);
+            string op, arg1, arg2, result;
+            ss >> result >> op >> arg1;
+
+            if (op == "=")
+                cout << "MOV " << result << ", " << arg1 << endl;
+            else if (op == "+")
+                cout << "ADD " << result << ", " << arg1 << endl;
+            else if (op == "-")
+                cout << "SUB " << result << ", " << arg1 << endl;
+            else if (op == "*")
+                cout << "MUL " << result << ", " << arg1 << endl;
+            else if (op == "/")
+                cout << "DIV " << result << ", " << arg1 << endl;
+            else if (op == "goto")
+                cout << "JMP " << result << endl;
+            else if (op == "if")
+                cout << "CMP " << arg1 << ", 0\nJNZ " << result << endl;
+        }
     }
 };
 
-class Parser
-{
+class Parser {
 private:
     vector<Token> tokens;
     size_t pos = 0;
-    IntermediateCodeGenerator &icg;
-    SymbolTable &symbolTable;
+    IntermediateCodeGenerator& icg;
+    SymbolTable& symbolTable;
 
 public:
-    Parser(const vector<Token> &tokens, IntermediateCodeGenerator &icg, SymbolTable &symbolTable)
+    Parser(const vector<Token>& tokens, IntermediateCodeGenerator& icg, SymbolTable& symbolTable)
         : tokens(tokens), icg(icg), symbolTable(symbolTable) {}
 
-    void parseProgram()
-    {
-        while (tokens[pos].type != T_EOF)
-        {
+    void parseProgram() {
+        while (tokens[pos].type != T_EOF) {
             parseStatement();
         }
     }
 
 private:
-    void parseStatement()
-    {
-        if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT)
-        {
+    void parseStatement() {
+        if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT) {
             parseDeclaration();
-        }
-        else if (tokens[pos].type == T_ID)
-        {
+        } else if (tokens[pos].type == T_ID) {
             parseAssignment();
-        }
-        else if (tokens[pos].type == T_IF)
-        {
+        } else if (tokens[pos].type == T_IF) {
             parseIfStatement();
-        }
-        else if (tokens[pos].type == T_LBRACE)
-        {
-            parseBlock();
-        }
-        else if (tokens[pos].type == T_FOR)
-        {
-            parseForStatement();
-        }
-        else
-        {
-            cout << "Syntax error: unexpected token " << tokens[pos].value << " at line: " << tokens[pos].line << endl;
+        } else {
+            cout << "Syntax error: unexpected token " << tokens[pos].value << endl;
             exit(1);
         }
     }
 
-    void parseBlock()
-    {
-        expect(T_LBRACE);
-        while (tokens[pos].type != T_RBRACE && tokens[pos].type != T_EOF)
-        {
-            parseStatement();
-        }
-        expect(T_RBRACE);
+    void parseDeclaration() {
+        TokenType type = tokens[pos].type;
+        string name = tokens[++pos].value; // Next token is the variable name
+        symbolTable.addEntry(name, type, "");
+        pos++; // Skip the name
+        pos++; // Skip the semicolon
     }
 
-    void parseForStatement()
-    {
-        expect(T_FOR);
-        expect(T_LPAREN);
-
-        parseAssignment(); // Initial assignment
-        string conditionLabel = icg.newLabel();
-        string bodyLabel = icg.newLabel();
-        string exitLabel = icg.newLabel();
-
-        icg.addInstruction(conditionLabel + ":");
-        string condition = parseExpression();
-        icg.addInstruction("if " + condition + " goto " + bodyLabel);
-        icg.addInstruction("goto " + exitLabel);
-        icg.addInstruction(bodyLabel + ":");
-
-        expect(T_SEMICOLON);
-        string updateVar = expectAndReturnValue(T_ID);
-        expect(T_ASSIGN);
-        string updateExpr = parseExpression();
-
-        expect(T_RPAREN);
-
-        parseBlock();
-        icg.addInstruction(updateVar + " = " + updateExpr);
-        icg.addInstruction("goto " + conditionLabel);
-
-        icg.addInstruction(exitLabel + ":");
-    }
-
-    void parseDeclaration()
-    {
-        expect(tokens[pos].type);
-        expect(T_ID);
-        expect(T_SEMICOLON);
-    }
-
-    void parseAssignment()
-    {
-        string varName = expectAndReturnValue(T_ID);
-        expect(T_ASSIGN);
+    void parseAssignment() {
+        string varName = tokens[pos++].value;
+        pos++; // Skip the '='
         string expr = parseExpression();
         icg.addInstruction(varName + " = " + expr);
-        expect(T_SEMICOLON);
+        symbolTable.setValue(varName, expr); // Update value in the symbol table
+        pos++; // Skip the semicolon
     }
 
-    void parseIfStatement()
-    {
-        expect(T_IF);
-        expect(T_LPAREN);
-        string cond = parseExpression();
-        expect(T_RPAREN);
-
-        string temp = icg.newTemp();
-        icg.addInstruction(temp + " = " + cond);
-        string l1 = icg.newLabel();
-        string l2 = icg.newLabel();
-        icg.addInstruction("if " + temp + " goto " + l1);
-        icg.addInstruction("goto " + l2);
-        icg.addInstruction(l1 + ":");
-
+    void parseIfStatement() {
+        pos++; // Skip 'if'
+        pos++; // Skip '('
+        string condition = parseExpression();
+        pos++; // Skip ')'
+        string labelTrue = icg.newLabel();
+        string labelFalse = icg.newLabel();
+        icg.addInstruction("if " + condition + " goto " + labelTrue);
+        icg.addInstruction("goto " + labelFalse);
+        icg.addInstruction(labelTrue + ":");
         parseStatement();
-
-        if (tokens[pos].type == T_ELSE)
-        {
-            string l3 = icg.newLabel();
-            icg.addInstruction("goto " + l3);
-            icg.addInstruction(l2 + ":");
-            expect(T_ELSE);
-            parseStatement();
-            icg.addInstruction(l3 + ":");
-        }
-        else
-        {
-            icg.addInstruction(l2 + ":");
-        }
+        icg.addInstruction(labelFalse + ":");
     }
 
-    string parseExpression()
-    {
-        string term = parseTerm();
-        while (tokens[pos].type == T_PLUS || tokens[pos].type == T_MINUS)
-        {
-            TokenType op = tokens[pos++].type;
-            string nextTerm = parseTerm();
+    string parseExpression() {
+        string term1 = parseTerm();
+
+        while (tokens[pos].type == T_PLUS || tokens[pos].type == T_MINUS ||
+               tokens[pos].type == T_GT || tokens[pos].type == T_LT) {
+            string op = tokens[pos++].value; // Get the operator
+            string term2 = parseTerm();
             string temp = icg.newTemp();
-            icg.addInstruction(temp + " = " + term + (op == T_PLUS ? " + " : " - ") + nextTerm);
-            term = temp;
+            icg.addInstruction(temp + " = " + term1 + " " + op + " " + term2);
+            term1 = temp;
         }
-        if (tokens[pos].type == T_GT || tokens[pos].type == T_LT)
-        {
-            string opSign = tokens[pos].type == T_GT ? " > " : " < ";
-            pos++;
-            string nextExpr = parseExpression();
-            string temp = icg.newTemp();
-            icg.addInstruction(temp + " = " + term + opSign + nextExpr);
-            term = temp;
-        }
-        return term;
+
+        return term1;
     }
 
-    string parseTerm()
-    {
-        string factor = parseFactor();
-        while (tokens[pos].type == T_MUL || tokens[pos].type == T_DIV)
-        {
-            TokenType op = tokens[pos++].type;
-            string nextFactor = parseFactor();
-            string temp = icg.newTemp();
-            icg.addInstruction(temp + " = " + factor + (op == T_MUL ? " * " : " / ") + nextFactor);
-            factor = temp;
-        }
-        return factor;
-    }
-
-    string parseFactor()
-    {
-        if (tokens[pos].type == T_NUM)
-        {
-            return tokens[pos++].value;
-        }
-        else if (tokens[pos].type == T_ID)
-        {
-            return tokens[pos++].value;
-        }
-        else if (tokens[pos].type == T_LPAREN)
-        {
-            expect(T_LPAREN);
+    string parseTerm() {
+        if (tokens[pos].type == T_NUM) {
+            return tokens[pos++].value; // Return numbers directly
+        } else if (tokens[pos].type == T_ID) {
+            string varName = tokens[pos++].value;
+            return symbolTable.getValue(varName); // Fetch value from symbol table
+        } else if (tokens[pos].type == T_LPAREN) {
+            pos++; // Skip '('
             string expr = parseExpression();
-            expect(T_RPAREN);
+            pos++; // Skip ')'
             return expr;
-        }
-        else
-        {
-            cout << "Syntax error in factor!" << endl;
+        } else {
+            cout << "Syntax error: unexpected token " << tokens[pos].value << endl;
             exit(1);
         }
-    }
-
-    void expect(TokenType expectedType)
-    {
-        if (tokens[pos].type != expectedType)
-        {
-            cout << "Expected token " << TokenTypeString(expectedType) << ", got " << TokenTypeString(tokens[pos].type) << endl;
-            exit(1);
-        }
-        pos++;
-    }
-
-    string expectAndReturnValue(TokenType expectedType)
-    {
-        expect(expectedType);
-        return tokens[pos - 1].value;
     }
 };
 
-int main()
-{
+int main() {
     string sourceCode = R"(
-    int x = 10;
-    float y = 3.14;
-    if (x > 5) {
-        x = x + 5;
-    } else {
-        y = y * 2;
-    }
-    for (int i = 0; i < 10; i++) {
-        x = x + 1;
-}
-)";
+    int x;
+    float y;
+    int z;
+    float w;
+    w = 1.3;
+    z = 19;
+    x = 11;
+    y = 3.14;
+    if (x > 3) x = x + 1;
+    
+    )";
 
     Lexer lexer(sourceCode);
     vector<Token> tokens = lexer.tokenize();
 
-    SymbolTable symbolTable(tokens);
-    symbolTable.makeTable();
+    // Display tokens
+    cout << "Tokens:" << endl;
+    for (const auto& token : tokens) {
+        cout << "Type: " << TokenTypeString(token.type) << ", Value: " << token.value << ", Line: " << token.line << endl;
+    }
 
+    SymbolTable symbolTable;
     IntermediateCodeGenerator icg;
+
     Parser parser(tokens, icg, symbolTable);
     parser.parseProgram();
 
+    // Display symbol table
+    symbolTable.printTable();
+
+    // Display three-address code
     icg.printInstructions();
+
+    // Generate and display assembly code
+    icg.generateAssembly();
 }
